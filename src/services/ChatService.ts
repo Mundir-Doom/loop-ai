@@ -157,6 +157,8 @@ export class ChatService {
         this.assistanceService.recordAttempt(userMessage);
         const attemptNumber = this.assistanceService.getAttemptCount();
 
+        console.log(`🤔 Assistance attempt ${attemptNumber}/2`);
+
         // Try to help with a clarifying/guiding response
         const helpfulResponse = await this.assistanceService.generateHelpfulResponse(
           userMessage,
@@ -169,7 +171,9 @@ export class ChatService {
 
         return helpfulResponse;
       } else {
-        // After 2 attempts, offer to create support ticket
+        // After 2 attempts, CREATE TICKET IMMEDIATELY
+        console.log('🎫 Max assistance attempts reached, creating support ticket');
+        
         const escalationMessage = this.assistanceService.getEscalationMessage();
         
         // Reset assistance attempts
@@ -177,18 +181,98 @@ export class ChatService {
 
         // Start ticket flow if service is available
         if (this.supportTicketService) {
-          return escalationMessage + "\n\n" + this.supportTicketService.startTicketFlow();
+          const ticketStart = this.supportTicketService.startTicketFlow();
+          const fullMessage = escalationMessage + "\n\n" + ticketStart;
+          return isArabic ? await this.translateIfNeeded(fullMessage, true) : fullMessage;
         } else {
           return escalationMessage + "\n\nPlease contact our support team directly at support@example.com";
         }
       }
     }
 
-    // If query was relevant, reset assistance attempts (they got help from KB)
-    this.assistanceService.reset();
+    // If query was relevant, try to answer from knowledge base
+    const answer = await this.answerFromKnowledgeBase(searchQuery, '', conversationHistory, isArabic);
 
-    // Answer from knowledge base (with language preference)
-    return await this.answerFromKnowledgeBase(searchQuery, '', conversationHistory, isArabic);
+    // Check if the answer indicates the bot doesn't know (unhelpful response)
+    const unhelpfulPhrases = [
+      "don't know",
+      "don't have",
+      "cannot answer",
+      "can't answer",
+      "no information",
+      "not sure",
+      "unable to",
+      "sorry",
+      "لا أعرف", // Arabic: "I don't know"
+      "لا أملك", // Arabic: "I don't have"
+      "لا يمكنني", // Arabic: "I cannot"
+      "عذراً", // Arabic: "sorry"
+    ];
+
+    const answerLower = answer.toLowerCase();
+    const isUnhelpful = unhelpfulPhrases.some(phrase => answerLower.includes(phrase));
+
+    // If the answer was unhelpful, trigger the assistance flow OR create ticket
+    if (isUnhelpful) {
+      console.log('⚠️ Answer was unhelpful, triggering assistance flow');
+      
+      // Check if we've already tried helping
+      const attemptCount = this.assistanceService.getAttemptCount();
+      
+      // If we've already made ANY assistance attempts, go straight to ticket
+      // This prevents endless back-and-forth when bot clearly can't help
+      if (attemptCount >= 1) {
+        console.log(`🎫 Already tried helping ${attemptCount} time(s), creating ticket now`);
+        
+        const escalationMessage = this.assistanceService.getEscalationMessage();
+        this.assistanceService.reset();
+
+        if (this.supportTicketService) {
+          const ticketStart = this.supportTicketService.startTicketFlow();
+          const fullMessage = escalationMessage + "\n\n" + ticketStart;
+          return isArabic ? await this.translateIfNeeded(fullMessage, true) : fullMessage;
+        } else {
+          return escalationMessage + "\n\nPlease contact our support team directly at support@example.com";
+        }
+      }
+      
+      // First unhelpful answer - try to help once
+      if (this.assistanceService.shouldTryToHelp()) {
+        this.assistanceService.recordAttempt(userMessage);
+        const attemptNumber = this.assistanceService.getAttemptCount();
+
+        console.log(`🤔 Assistance attempt ${attemptNumber}/2 (unhelpful answer path)`);
+
+        const helpfulResponse = await this.assistanceService.generateHelpfulResponse(
+          userMessage,
+          attemptNumber,
+          this.config.apiKey,
+          this.knowledgeBaseService.getSummary(),
+          this.config.referer,
+          this.config.title
+        );
+
+        return isArabic ? await this.translateIfNeeded(helpfulResponse, true) : helpfulResponse;
+      } else {
+        // Shouldn't reach here, but just in case
+        console.log('🎫 Max attempts reached, creating ticket');
+        
+        const escalationMessage = this.assistanceService.getEscalationMessage();
+        this.assistanceService.reset();
+
+        if (this.supportTicketService) {
+          const ticketStart = this.supportTicketService.startTicketFlow();
+          const fullMessage = escalationMessage + "\n\n" + ticketStart;
+          return isArabic ? await this.translateIfNeeded(fullMessage, true) : fullMessage;
+        } else {
+          return escalationMessage + "\n\nPlease contact our support team directly at support@example.com";
+        }
+      }
+    }
+
+    // Answer was helpful, reset assistance attempts
+    this.assistanceService.reset();
+    return answer;
   }
 
   /**
