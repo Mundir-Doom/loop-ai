@@ -1,0 +1,25 @@
+🎉 NEW FEATURE ADDED: SUPPORT TICKET SYSTEM
+
+When users ask questions NOT in your Google Sheets knowledge base,
+the bot will now:
+
+1. Ask for their name
+2. Ask for their email  
+3. Ask for customer number
+4. Ask for problem description
+5. Summarize everything
+6. Send to your Telegram group automatically!
+
+SETUP (5 minutes):
+1. Create Telegram bot (@BotFather)
+2. Get bot token
+3. Add bot to your group
+4. Get chat ID
+5. Update .env file
+6. Restart app
+
+See TELEGRAM_SETUP.md for detailed instructions!
+See SUPPORT_TICKET_FEATURE.md for full documentation!
+
+Your OpenRouter API is already configured ✅
+Just need to set up Telegram to enable this feature!
